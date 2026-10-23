@@ -18,3 +18,15 @@
   </mitre>
 </rule>
 ```
+
+  <rule id="100400" level="12">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.originalFileName">Apollo.exe</field>
+    <description>Mythic C2 Agent Detected: Apollo.exe (OriginalFileName)</description>
+    <mitre>
+      <id>T1071</id>
+      <id>T1059</id>
+    </mitre>
+  </rule>
+```
+при этом это правило не сработало когда запускали loader.bin по скольку оно настроено на apollo.exe, а в данном слкча исполняемый файл был InstallUtil.exe
