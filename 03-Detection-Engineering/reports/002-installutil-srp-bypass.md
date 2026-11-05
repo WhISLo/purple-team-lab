@@ -1,30 +1,29 @@
-# Инцидент 002: Обход SRP и выполнение Shellcode в памяти (InstallUtil)
+# Инцидент 002: Автоматическая блокировка SSH-брутфорса (SOAR)
 
-**Дата:** 2026-10-22
-**Агент:** Win10 (10.10.10.201)
-**Цель:** Обойти политику SRP и запустить C2-агент, не оставляя исполняемых файлов на диске.
+**Дата:** 2026-11-03
+**Атакующий:** Kali Linux (10.10.10.203)
+**Цель:** Ubuntu (10.10.10.20, агент 004)
+**Инструмент атаки:** SSH (множественные неудачные попытки входа)
 
 ## Executive Summary
-Атакующий использовал технику LOLBins (InstallUtil.exe) для обхода Software Restriction Policies (SRP). Вместо запуска вредоносного .exe файла, был скомпилирован кастомный C# загрузчик (loader.dll), который через InstallUtil загрузил шелл-код Apollo напрямую в оперативную память. Встроенное правило Wazuh (100400) не сработало, так как оно было завязано на имя процесса apollo.exe, которого на диске не было.
+С машины Kali был запущен брутфорс SSH по серверу Ubuntu. Wazuh зафиксировал множественные ошибки входа (Rule 5551 и 5763, уровень 10). Автоматизированная система SOAR (Wazuh + Shuffle + Python) перехватила алерт, авторизовалась в Wazuh API, получила JWT-токен и отправила команду Active Response. IP атакующего был автоматически заблокирован в `iptables` на 60 секунд. На почту администратора пришло уведомление.
 
-## Attack Chain (Red Team)
-1. Создан payload `apollo.bin` (Shellcode) в Mythic.
-2. Написан C# загрузчик (`loader.cs`), скачивающий и исполняющий шелл-код в памяти.
-3. Загрузчик скомпилирован утилитой `csc.exe` в `loader.dll`.
-4. Выполнен запуск: `InstallUtil.exe /U C:\Windows\Tasks\loader.dll`.
-5. Загрузчик скачал `apollo.bin` с Kali и внедрил в память процесса InstallUtil.
+## Timeline
+*   **13:16:07** — Первые неудачные попытки входа (атака).
+*   **13:16:09** — Wazuh фиксирует правило 5763 (уровень 10) и отправляет вебхук в Shuffle.
+*   **13:16:24** — Python-скрипт в Shuffle получает токен и отправляет команду Active Response.
+*   **13:16:24** — Агент Wazuh на Ubuntu выполняет `firewall-drop`. IP `10.10.10.203` блокируется.
+*   **13:16:26** — Email с уведомлением успешно доставлен.
 
-## Detection Failure (Blue Team)
-- **Почему SRP не сработал:** `InstallUtil.exe` — доверенный бинарник Microsoft из `C:\Windows\`, политика SRP разрешает его запуск.
-- **Почему Defender не сработал:** Защита в реальном времени была временно отключена для лабораторных тестов.
-- **Почему Wazuh не сработал:** Sysmon видел запуск `InstallUtil.exe`, но не видел `apollo.exe`, так как вредоносный код исполнялся в памяти (инжект).
+## IOCs (Indicators of Compromise)
+*   **IP атакующего:** 10.10.10.203
+*   **Целевой сервис:** SSH (порт 22)
+*   **Правила Wazuh:** 5551, 5763
+*   **MITRE ATT&CK:** T1110 (Brute Force)
 
-## MITRE ATT&CK
-- **T1218.004:** System Binary Proxy Execution: InstallUtil
-- **T1055:** Process Injection
-- **T1071:** Application Layer Protocol
-
-## Recommendations (Actionable)
-1. Запретить запуск `InstallUtil.exe` для обычных пользователей через AppLocker/SRP.
-2. Включить и настроить Sysmon Event ID 8 (CreateRemoteThread) и Event ID 10 (ProcessAccess) для детекции инжектов в память.
-3. Написать кастомные правила Wazuh на аномальную сетевую активность от `InstallUtil.exe`.
+## Доказательства
+*(Добавь скриншоты)*
+1.  `03-soar-wazuh-alert.png` — Скриншот из Wazuh Dashboard с алертами 5551/5763.
+2.  `03-soar-shuffle-success.png` — Скриншот зеленой цепочки в Shuffle.
+3.  `03-soar-iptables-drop.png` — Скриншот терминала Ubuntu с выводом `sudo iptables -L INPUT -n -v`.
+4.  `03-soar-email-alert.png` — Скриншот письма на почте.

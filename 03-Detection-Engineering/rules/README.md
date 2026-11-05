@@ -1,36 +1,97 @@
-﻿# Правила Wazuh
+﻿# Правила Wazuh (Detection Engineering)
 
-## Список правил
-1. **100200** — DCSync (4662, `Replicating Directory Changes`).
-2. **100201** — Pass-the-Hash (4624, Logon Type 3 + NTLM).
-3. **100210** — Kerberoasting (4769, RC4).
-4. **100400** — Apollo C2 (Sysmon Event ID 1, `OriginalFileName: Apollo.exe`).
+В этом разделе описаны кастомные правила (Custom Rules), написанные для Wazuh. Все правила хранятся в `local_rules.xml` внутри контейнера Wazuh Manager.
 
-### Пример правила (DCSync)
+## Список реализованных правил
+
+### 1. DCSync (Rule ID: 100200)
+*   **Цель:** Обнаружение попыток репликации данных каталога (DCSync).
+*   **Условие:** Event ID 4662, поле `properties` содержит `Replicating Directory Changes`.
+*   **Уровень:** 12.
+*   **MITRE:** T1003.006.
+
+### 2. Pass-the-Hash (Rule ID: 100201)
+*   **Цель:** Обнаружение сетевых входов с использованием NTLM-хеша.
+*   **Условие:** Event ID 4624, `logonType` = 3, `authenticationPackageName` = NTLM.
+*   **Уровень:** 10.
+*   **MITRE:** T1550.002.
+
+### 3. Kerberoasting (Rule ID: 100210)
+*   **Цель:** Обнаружение запросов TGS-билетов с шифрованием RC4.
+*   **Условие:** Event ID 4769, `ticketEncryptionType` = 0x17.
+*   **Уровень:** 10.
+*   **MITRE:** T1558.003.
+
+### 4. Запуск C2-агента Apollo (Rule ID: 100400)
+*   **Цель:** Обнаружение запуска агента Mythic Apollo по оригинальному имени файла.
+*   **Условие:** Sysmon Event ID 1, `originalFileName` = `Apollo.exe`.
+*   **Уровень:** 12.
+*   **MITRE:** T1071, T1059.
+
+## Пример правила (DCSync)
 ```xml
-<rule id="100200" level="12">
-  <if_sid>60106</if_sid>
-  <field name="win.system.eventID">^4662$</field>
-  <field name="win.eventdata.properties">Replicating Directory Changes</field>
-  <description>Possible DCSync attack</description>
-  <mitre>
-    <id>T1003.006</id>
-  </mitre>
-</rule>
-```
-
-  <rule id="100400" level="12">
-    <if_sid>61603</if_sid>
-    <field name="win.eventdata.originalFileName">Apollo.exe</field>
-    <description>Mythic C2 Agent Detected: Apollo.exe (OriginalFileName)</description>
+<group name="windows,dcsync,">
+  <rule id="100200" level="12">
+    <if_sid>60106</if_sid>
+    <field name="win.system.eventID">^4662$</field>
+    <field name="win.eventdata.properties">Replicating Directory Changes</field>
+    <description>Possible DCSync attack</description>
     <mitre>
-      <id>T1071</id>
-      <id>T1059</id>
+      <id>T1003.006</id>
     </mitre>
   </rule>
-```
-при этом это правило не сработало когда запускали loader.bin по скольку оно настроено на apollo.exe, а в данном слкча исполняемый файл был InstallUtil.exe
+</group>
 
-## Правила, запускающие автоматическое реагирование (SOAR)
-*   **Rule 5551:** `PAM: Multiple failed logins in a small period of time.` (Уровень 10). Срабатывает при множественных ошибках аутентификации.
-*   **Rule 5763:** `sshd: brute force trying to get access to the system.` (Уровень 10). Классическое правило детекции SSH-брутфорса.
+---
+
+### 📄 Файл 3: `03-Detection-Engineering/playbooks/README.md`
+*(Полностью замени содержимое этого файла)*
+
+```markdown
+# Плейбуки реагирования на инциденты (SOC Playbooks)
+
+В этом разделе описаны стандартные операционные процедуры (SOP) для SOC-аналитика при обнаружении различных типов атак.
+
+---
+
+## Плейбук 1: Реагирование на SSH-брутфорс (Автоматизированный)
+
+**Триггер:** Алерт Wazuh уровня 10+ (Rule 5551 или 5763).
+
+**Автоматические действия (SOAR):**
+1.  Wazuh отправляет JSON-алерт в вебхук Shuffle.
+2.  Shuffle проверяет уровень алерта (Condition > 7).
+3.  Python-скрипт в Shuffle запрашивает JWT-токен у Wazuh API.
+4.  Скрипт отправляет PUT-запрос на `/active-response` с командой `!firewall-drop`.
+5.  Агент Wazuh на целевой машине выполняет `firewall-drop`, блокируя IP атакующего в `iptables` на 60 секунд.
+6.  Shuffle отправляет Email-уведомление администратору.
+
+**Действия аналитика (если автоматика не сработала):**
+1.  Проверить логи в Wazuh Dashboard (фильтр по IP).
+2.  Вручную заблокировать IP на файрволе (`iptables -A INPUT -s <IP> -j DROP`).
+3.  Проверить целевой хост на наличие успешных входов.
+
+---
+
+## Плейбук 2: Реагирование на DCSync (Атака на Active Directory)
+
+**Триггер:** Алерт Wazuh Rule 100200 (DCSync).
+
+**Действия аналитика:**
+1.  **Валидация:** Проверить, с какого хоста и от какого пользователя пришел запрос (Event ID 4662). Убедиться, что это не легитимный контроллер домена.
+2.  **Сдерживание:** Немедленно изолировать скомпрометированный хост от сети (отключить сетевой адаптер).
+3.  **Сбор данных:** Запросить у Wazuh полный контекст (какие учетные записи были скомпрометированы).
+4.  **Реагирование:** Сменить пароли для всех учетных записей, которые могли быть скомпрометированы. В случае компрометации `krbtgt` — сменить пароль дважды.
+5.  **Восстановление:** Переустановить скомпрометированный хост.
+
+---
+
+## Плейбук 3: Обнаружение C2-агента (Apollo)
+
+**Триггер:** Алерт Wazuh Rule 100400 (Apollo C2) или сетевые соединения на подозрительный IP.
+
+**Действия аналитика:**
+1.  **Валидация:** Проверить процесс `Apollo.exe` в Sysmon (Event ID 1). Посмотреть, откуда он был запущен (родительский процесс).
+2.  **Сдерживание:** Остановить процесс через EDR/Диспетчер задач. Заблокировать IP C2-сервера на периметре.
+3.  **Искоренение:** Удалить вредоносный файл. Проверить автозагрузку и планировщик задач на наличие персистентности.
+4.  **Уведомление:** Сообщить старшему аналитику о компрометации.
