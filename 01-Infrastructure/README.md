@@ -7,13 +7,15 @@
 | Роль | ОС | IP-адрес | Установленное ПО |
 |------|----|----------|------------------|
 | Атакующий | Kali Linux | 10.10.10.203 | Docker, Juice Shop (в контейнере) |
-| SIEM / C2 | Ubuntu 22.04 | 10.10.10.20 | Wazuh (Docker), Mythic C2 |
+| SIEM / C2 | Ubuntu 22.04 | 10.10.10.20 | Wazuh (Docker), Mythic C2, Shuffle (SOAR)|
 | Контроллер домена | Windows Server 2016 | 10.10.10.200 | Wazuh Agent, AD DS, DNS, DHCP |
 | Жертва | Windows 10 | 10.10.10.201 | Wazuh Agent |
 
 ## Docker
-На Kali и Ubuntu развернут Docker. Wazuh запущен в виде набора контейнеров (single-node) на Ubuntu. Juice Shop разворачивался на Kali через `docker run -d -p 3000:3000 bkimminich/juice-shop`.
+На Kali и Ubuntu развернут Docker. Wazuh запущен в виде набора контейнеров (single-node) на Ubuntu. Так же в последствии был установлен контейнер с Shuffle (SOAR). Juice Shop разворачивался на Kali через `docker run -d -p 3000:3000 bkimminich/juice-shop`.
 
 ## Проблемы и решения
 - **Нехватка дискового пространства на Ubuntu:** виртуальный диск был расширен через «Менеджер виртуальных носителей» VirtualBox, затем внутри ОС выполнены `growpart` и `resize2fs`.
 - **Сетевые конфликты:** после импорта ВМ IP-адреса сбивались, приходилось перенастраивать адаптеры (Host-Only / Internal Network).
+для работы тяжелого стека (Shuffle + OpenSearch) пришлось выделить:
+Ubuntu (SIEM/SOAR): 25 ГБ ОЗУ, 16 ядер CPU, 256 МБ видеопамяти (и GUI).

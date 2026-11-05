@@ -30,3 +30,7 @@
   </rule>
 ```
 при этом это правило не сработало когда запускали loader.bin по скольку оно настроено на apollo.exe, а в данном слкча исполняемый файл был InstallUtil.exe
+
+## Правила, запускающие автоматическое реагирование (SOAR)
+*   **Rule 5551:** `PAM: Multiple failed logins in a small period of time.` (Уровень 10). Срабатывает при множественных ошибках аутентификации.
+*   **Rule 5763:** `sshd: brute force trying to get access to the system.` (Уровень 10). Классическое правило детекции SSH-брутфорса.
